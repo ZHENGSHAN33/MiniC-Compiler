@@ -1,0 +1,22 @@
+# Build outputs
+compiler.exe
+compiler
+*.o
+*.obj
+*.exe
+
+# Temporary outputs
+output/
+output_examples/
+docs/
+*.log
+
+# IDE and system files
+.vscode/
+.idea/
+.vs/
+.gitrepo/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
