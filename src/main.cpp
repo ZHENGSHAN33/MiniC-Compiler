@@ -1,4 +1,8 @@
 #include "common.hpp"
+<<<<<<< HEAD
+=======
+#include "lexer.hpp"
+>>>>>>> 7cf4835 (feat(lexer):完成词法分析器功能)
 
 #include <algorithm>
 #include <cctype>
@@ -22,6 +26,7 @@ std::string readFile(const std::string& path) {
     return ss.str();
 }
 
+<<<<<<< HEAD
 std::string tokenName(TokenKind kind) {
     switch (kind) {
         case TokenKind::KW_INT: return "KW_INT";
@@ -64,6 +69,8 @@ std::string tokenName(TokenKind kind) {
     return "UNKNOWN";
 }
 
+=======
+>>>>>>> 7cf4835 (feat(lexer):完成词法分析器功能)
 std::string typeName(TypeKind type) {
     switch (type) {
         case TypeKind::Int: return "int";
@@ -105,6 +112,7 @@ bool isIntegerText(const std::string& s) {
     return true;
 }
 
+<<<<<<< HEAD
 class Lexer {
 public:
     explicit Lexer(std::string source) : source_(std::move(source)) {}
@@ -281,6 +289,8 @@ std::ostream& printTokens(std::ostream& out, const TokenList& tokens) {
     return out;
 }
 
+=======
+>>>>>>> 7cf4835 (feat(lexer):完成词法分析器功能)
 std::unique_ptr<ASTNode> makeNode(ASTKind kind, const std::string& text, SourceLocation loc) {
     return std::make_unique<ASTNode>(kind, text, loc);
 }
