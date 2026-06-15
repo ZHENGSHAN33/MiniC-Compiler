@@ -7,7 +7,14 @@
 
 namespace minic {
 
-Lexer::Lexer(std::string source) : source_(std::move(source)) {}
+Lexer::Lexer(std::string source) : source_(std::move(source)) {
+    if (source_.size() >= 3 &&
+        static_cast<unsigned char>(source_[0]) == 0xEF &&
+        static_cast<unsigned char>(source_[1]) == 0xBB &&
+        static_cast<unsigned char>(source_[2]) == 0xBF) {
+        source_.erase(0, 3);
+    }
+}
 
 TokenList Lexer::scan() {
     while (!isAtEnd()) {
