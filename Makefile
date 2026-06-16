@@ -7,7 +7,7 @@ SRC = src/main.cpp src/lexer.cpp src/parser.cpp
 
 all: $(TARGET)
 
-$(TARGET): $(SRC) include/common.hpp include/lexer.hpp
+$(TARGET): $(SRC) include/common.hpp include/lexer.hpp include/parser.hpp
 
 	$(CXX) $(CXXFLAGS) $(SRC) -o $(TARGET)
 
