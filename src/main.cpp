@@ -2,11 +2,11 @@
 
 #include "lexer.hpp"
 #include "parser.hpp"
+#include "semantic.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <map>
 #include <set>
@@ -25,17 +25,6 @@ std::string readFile(const std::string& path) {
     return ss.str();
 }
 
-
-std::string typeName(TypeKind type) {
-    switch (type) {
-        case TypeKind::Int: return "int";
-        case TypeKind::Bool: return "bool";
-        case TypeKind::Void: return "void";
-        case TypeKind::Error: return "error";
-    }
-    return "error";
-}
-
 bool isIntegerText(const std::string& s) {
     if (s.empty()) return false;
     size_t i = (s[0] == '-') ? 1 : 0;
@@ -43,185 +32,6 @@ bool isIntegerText(const std::string& s) {
     for (; i < s.size(); ++i) if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
     return true;
 }
-
-
-class Semantic {
-public:
-    void analyze(ASTNode* root) {
-        enterScope();
-        for (auto& child : root->children) analyzeFunction(child.get());
-        exitScope();
-    }
-
-    const std::vector<CompileError>& errors() const { return errors_; }
-
-    void printSymbols(std::ostream& out) const {
-        out << "Scope  Kind      Type   Name\n";
-        for (const auto& s : allSymbols_) {
-            out << std::setw(5) << s.scopeLevel << "  "
-                << std::setw(8) << (s.kind == SymbolKind::Function ? "function" : "variable") << "  "
-                << std::setw(5) << typeName(s.type) << "  " << s.name << "\n";
-        }
-    }
-
-private:
-    std::vector<std::unordered_map<std::string, Symbol>> scopes_;
-    std::vector<Symbol> allSymbols_;
-    std::vector<CompileError> errors_;
-    TypeKind currentReturn_ = TypeKind::Void;
-    int loopDepth_ = 0;
-
-    void enterScope() { scopes_.push_back({}); }
-    void exitScope() { scopes_.pop_back(); }
-    int scopeLevel() const { return static_cast<int>(scopes_.size()) - 1; }
-
-    void error(SourceLocation loc, const std::string& message) {
-        errors_.push_back({"SemanticError", loc, message});
-    }
-
-    bool declare(const Symbol& symbol) {
-        auto& scope = scopes_.back();
-        if (scope.count(symbol.name)) return false;
-        scope[symbol.name] = symbol;
-        allSymbols_.push_back(symbol);
-        return true;
-    }
-
-    Symbol* lookup(const std::string& name) {
-        for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-            auto found = it->find(name);
-            if (found != it->end()) return &found->second;
-        }
-        return nullptr;
-    }
-
-    void analyzeFunction(ASTNode* fn) {
-        Symbol symbol{fn->text, SymbolKind::Function, fn->type, scopeLevel(), fn->loc};
-        if (!declare(symbol)) error(fn->loc, "function '" + fn->text + "' is already declared");
-        currentReturn_ = fn->type;
-        analyzeBlock(fn->children[0].get(), false);
-    }
-
-    void analyzeBlock(ASTNode* block, bool nested = true) {
-        if (nested) enterScope();
-        for (auto& child : block->children) analyzeStmt(child.get());
-        if (nested) exitScope();
-    }
-
-    void analyzeStmt(ASTNode* node) {
-        switch (node->kind) {
-            case ASTKind::Block: analyzeBlock(node); break;
-            case ASTKind::VarDecl: {
-                Symbol symbol{node->text, SymbolKind::Variable, node->type, scopeLevel(), node->loc};
-                if (!declare(symbol)) error(node->loc, "variable '" + node->text + "' is already declared in this scope");
-                break;
-            }
-            case ASTKind::AssignStmt: {
-                Symbol* s = lookup(node->text);
-                TypeKind rhs = analyzeExpr(node->children[0].get());
-                if (!s) error(node->loc, "variable '" + node->text + "' is not declared");
-                else if (rhs != TypeKind::Error && s->type != rhs) {
-                    error(node->loc, "cannot assign " + typeName(rhs) + " to " + typeName(s->type) + " variable '" + node->text + "'");
-                }
-                break;
-            }
-            case ASTKind::ReadStmt: {
-                ASTNode* id = node->children[0].get();
-                Symbol* s = lookup(id->text);
-                if (!s) error(id->loc, "variable '" + id->text + "' is not declared");
-                else if (s->type != TypeKind::Int) error(id->loc, "read currently supports int variables only");
-                break;
-            }
-            case ASTKind::WriteStmt:
-                analyzeExpr(node->children[0].get());
-                break;
-            case ASTKind::IfStmt: {
-                TypeKind cond = analyzeExpr(node->children[0].get());
-                if (cond != TypeKind::Bool && cond != TypeKind::Error) error(node->children[0]->loc, "if condition must be bool");
-                analyzeStmt(node->children[1].get());
-                if (node->children.size() > 2) analyzeStmt(node->children[2].get());
-                break;
-            }
-            case ASTKind::WhileStmt: {
-                TypeKind cond = analyzeExpr(node->children[0].get());
-                if (cond != TypeKind::Bool && cond != TypeKind::Error) error(node->children[0]->loc, "while condition must be bool");
-                ++loopDepth_;
-                analyzeStmt(node->children[1].get());
-                --loopDepth_;
-                break;
-            }
-            case ASTKind::BreakStmt:
-                if (loopDepth_ == 0) error(node->loc, "break must be inside a loop");
-                break;
-            case ASTKind::ContinueStmt:
-                if (loopDepth_ == 0) error(node->loc, "continue must be inside a loop");
-                break;
-            case ASTKind::ReturnStmt: {
-                TypeKind actual = analyzeExpr(node->children[0].get());
-                if (actual != TypeKind::Error && actual != currentReturn_) error(node->loc, "return type should be " + typeName(currentReturn_));
-                break;
-            }
-            default:
-                break;
-        }
-    }
-
-    TypeKind analyzeExpr(ASTNode* node) {
-        switch (node->kind) {
-            case ASTKind::IntLiteral:
-                node->type = TypeKind::Int;
-                return node->type;
-            case ASTKind::BoolLiteral:
-                node->type = TypeKind::Bool;
-                return node->type;
-            case ASTKind::Identifier: {
-                Symbol* s = lookup(node->text);
-                if (!s) {
-                    error(node->loc, "variable '" + node->text + "' is not declared");
-                    node->type = TypeKind::Error;
-                } else {
-                    node->type = s->type;
-                }
-                return node->type;
-            }
-            case ASTKind::UnaryExpr: {
-                TypeKind inner = analyzeExpr(node->children[0].get());
-                if (node->text == "-") {
-                    if (inner != TypeKind::Int && inner != TypeKind::Error) error(node->loc, "unary '-' expects int");
-                    node->type = inner == TypeKind::Error ? TypeKind::Error : TypeKind::Int;
-                } else {
-                    if (inner != TypeKind::Bool && inner != TypeKind::Error) error(node->loc, "'!' expects bool");
-                    node->type = inner == TypeKind::Error ? TypeKind::Error : TypeKind::Bool;
-                }
-                return node->type;
-            }
-            case ASTKind::BinaryExpr: {
-                TypeKind left = analyzeExpr(node->children[0].get());
-                TypeKind right = analyzeExpr(node->children[1].get());
-                const std::string& op = node->text;
-                if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
-                    if ((left != TypeKind::Int || right != TypeKind::Int) && left != TypeKind::Error && right != TypeKind::Error)
-                        error(node->loc, "operator '" + op + "' expects int operands");
-                    node->type = (left == TypeKind::Error || right == TypeKind::Error) ? TypeKind::Error : TypeKind::Int;
-                } else if (op == "<" || op == "<=" || op == ">" || op == ">=") {
-                    if ((left != TypeKind::Int || right != TypeKind::Int) && left != TypeKind::Error && right != TypeKind::Error)
-                        error(node->loc, "operator '" + op + "' expects int operands");
-                    node->type = (left == TypeKind::Error || right == TypeKind::Error) ? TypeKind::Error : TypeKind::Bool;
-                } else if (op == "==" || op == "!=") {
-                    if (left != right && left != TypeKind::Error && right != TypeKind::Error) error(node->loc, "equality operands should have same type");
-                    node->type = (left == TypeKind::Error || right == TypeKind::Error) ? TypeKind::Error : TypeKind::Bool;
-                } else {
-                    if ((left != TypeKind::Bool || right != TypeKind::Bool) && left != TypeKind::Error && right != TypeKind::Error)
-                        error(node->loc, "operator '" + op + "' expects bool operands");
-                    node->type = (left == TypeKind::Error || right == TypeKind::Error) ? TypeKind::Error : TypeKind::Bool;
-                }
-                return node->type;
-            }
-            default:
-                return TypeKind::Error;
-        }
-    }
-};
 
 IROp opFromText(const std::string& op) {
     if (op == "+") return IROp::ADD;
