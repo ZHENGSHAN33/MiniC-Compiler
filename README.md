@@ -2,7 +2,7 @@
 
 这是一个面向编译原理大作业的 Mini-C 教学编译器。项目目标不是把 C 语言完整复刻一遍，而是把一个小语言从源程序逐步处理到可运行结果：词法分析、语法分析、语义检查、中间代码、简单优化、VM 后端和解释执行。
 
-当前分支是 `feature/parser`，主要完成语法分析模块拆分和 AST 构建。语法分析器采用递归下降方式实现，按照表达式优先级逐层分析，并能在出错时给出带行号、列号的语法错误。
+当前分支是 `feature/semantic`，主要完成语义分析模块拆分和符号表检查。本分支已经包含前面完成的词法分析和语法分析模块，并在 AST 基础上继续进行类型检查、作用域检查和控制流相关检查。
 
 ## 已支持功能
 
@@ -13,23 +13,27 @@
 - 展示输出：Token、AST、AST DOT、符号表、IR、优化后 IR、VM 指令、x86 风格汇编
 - 错误处理：词法错误、语法错误、语义错误，均带行号和列号
 
-## feature/parser 分支完成内容
+## feature/semantic 分支完成内容
 
-本分支完成了语法分析模块化：
+本分支完成了语义分析模块化：
 
-- 新增 `include/parser.hpp`，声明 `Parser`、`printAST` 和 `DotPrinter` 接口。
-- 新增 `src/parser.cpp`，实现递归下降语法分析和 AST 输出。
-- 支持函数、代码块、声明语句、赋值语句、分支语句、循环语句、跳转语句和输入输出语句。
-- 支持表达式优先级：`||`、`&&`、`== !=`、`< <= > >=`、`+ -`、`* / %`、一元 `! -`。
-- 支持 AST 文本输出和 Graphviz DOT 输出。
-- 语法错误统一输出为 `SyntaxError`，包含具体位置和原因。
-- `build.ps1`、`Makefile`、`scripts/run_all_tests.ps1` 已接入 `src/parser.cpp`。
-- 补充语法分析专项测试，覆盖表达式优先级、嵌套语句、缺少右括号和非法语句开头。
+- 新增 `include/semantic.hpp`，声明 `Semantic` 类和 `typeName` 接口。
+- 新增 `src/semantic.cpp`，实现语义分析和符号表输出。
+- 维护作用域栈，支持变量和函数符号登记。
+- 检查同一作用域内变量重复声明。
+- 检查变量使用前是否已经声明。
+- 检查赋值语句左右类型是否一致。
+- 检查 `if`、`while` 条件是否为 `bool`。
+- 检查 `break`、`continue` 是否位于循环内部。
+- 检查 `read` 目前只读取 `int` 变量。
+- 检查一元、二元表达式操作数类型和返回值类型。
+- `build.ps1`、`Makefile`、`scripts/run_all_tests.ps1` 已接入 `src/semantic.cpp`。
+- 补充语义分析专项测试，覆盖未声明变量、重复声明、类型不匹配、循环外跳转、条件类型错误、读入 bool、算术操作数错误和返回值类型错误。
 
 当前测试结果：
 
 ```text
-Total: 18, Passed: 18, Failed: 0
+Total: 25, Passed: 25, Failed: 0
 ```
 
 ## 构建
@@ -60,16 +64,10 @@ compiler tests/valid/factorial.mc --run
 compiler tests/valid/factorial.mc -S
 ```
 
-查看 AST：
+查看符号表和语义检查结果：
 
 ```powershell
-.\compiler.exe tests\valid\factorial.mc --ast
-```
-
-生成 AST 的 DOT 描述：
-
-```powershell
-.\compiler.exe tests\valid\factorial.mc --dot
+.\compiler.exe tests\valid\factorial.mc --check
 ```
 
 运行阶乘示例：
@@ -97,7 +95,7 @@ echo 5 | .\compiler.exe tests\valid\factorial.mc --run
 - 正确程序：阶乘、求和、逻辑判断、优化样例、嵌套语句和表达式优先级
 - 词法错误：非法字符、未闭合注释、非法数字、单个 `&`、单个 `|`
 - 语法错误：缺少分号、缺少右括号、非法语句开头
-- 语义错误：未声明变量、类型不匹配、循环外 `break`
+- 语义错误：未声明变量、重复声明、类型不匹配、循环外 `break/continue`、条件类型错误、读入 bool、算术操作数错误、返回值类型错误
 
 ## 小组协作方式
 
@@ -139,10 +137,9 @@ git push -u origin feature/自己的模块名
 
 ## 后续拆分建议
 
-目前词法分析和语法分析已经拆出，`src/main.cpp` 仍保留主控流程以及语义分析、中间代码、后端等集成实现。后续成员可以按同样方式逐步拆分：
+目前词法分析、语法分析和语义分析已经拆出，`src/main.cpp` 仍保留主控流程以及中间代码、后端等集成实现。后续成员可以按同样方式逐步拆分：
 
 ```text
-semantic   -> include/semantic.hpp  + src/semantic.cpp
 ir         -> include/ir.hpp        + src/ir.cpp
 backend    -> include/backend.hpp   + src/backend.cpp
 tests      -> 正例、反例和自动测试
@@ -156,9 +153,11 @@ tests      -> 正例、反例和自动测试
 include/common.hpp          公共数据结构和接口
 include/lexer.hpp           词法分析模块接口
 include/parser.hpp          语法分析模块接口
-src/main.cpp                当前主控流程和其余集成模块
+include/semantic.hpp        语义分析模块接口
+src/main.cpp                当前主控流程和后续集成模块
 src/lexer.cpp               词法分析模块实现
 src/parser.cpp              语法分析模块实现
+src/semantic.cpp            语义分析模块实现
 tests/                      正例和反例
 scripts/run_all_tests.ps1   自动测试脚本
 ```

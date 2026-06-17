@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-& g++ -std=c++17 -Wall -Wextra -O2 -Iinclude src/main.cpp src/lexer.cpp src/parser.cpp -o compiler.exe
+& g++ -std=c++17 -Wall -Wextra -O2 -Iinclude src/main.cpp src/lexer.cpp src/parser.cpp src/semantic.cpp -o compiler.exe
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
@@ -53,6 +53,13 @@ Check-Fail "parse bad statement start" ".\compiler.exe tests\invalid_parse\bad_s
 Check-Fail "semantic undefined variable" ".\compiler.exe tests\invalid_semantic\undefined_var.mc --check" "not declared"
 Check-Fail "semantic type mismatch" ".\compiler.exe tests\invalid_semantic\type_mismatch.mc --check" "cannot assign"
 Check-Fail "semantic break outside loop" ".\compiler.exe tests\invalid_semantic\break_outside_loop.mc --check" "break must be inside"
+Check-Fail "semantic redeclared variable" ".\compiler.exe tests\invalid_semantic\redeclared_var.mc --check" "already declared"
+Check-Fail "semantic continue outside loop" ".\compiler.exe tests\invalid_semantic\continue_outside_loop.mc --check" "continue must be inside"
+Check-Fail "semantic if condition type" ".\compiler.exe tests\invalid_semantic\if_condition_int.mc --check" "if condition must be bool"
+Check-Fail "semantic while condition type" ".\compiler.exe tests\invalid_semantic\while_condition_int.mc --check" "while condition must be bool"
+Check-Fail "semantic read bool" ".\compiler.exe tests\invalid_semantic\read_bool.mc --check" "read currently supports int"
+Check-Fail "semantic arithmetic operand type" ".\compiler.exe tests\invalid_semantic\arithmetic_bool.mc --check" "expects int operands"
+Check-Fail "semantic return type" ".\compiler.exe tests\invalid_semantic\return_type_bool.mc --check" "return type should be int"
 
 Write-Host "Total: $total, Passed: $passed, Failed: $($total - $passed)"
 if ($passed -ne $total) { exit 1 }
