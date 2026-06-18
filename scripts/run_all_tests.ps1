@@ -44,6 +44,10 @@ Check-Pass "ir arithmetic generation" ".\compiler.exe tests\valid\ir_arithmetic.
 Check-Pass "ir temporary generation" ".\compiler.exe tests\valid\ir_temporaries.mc --ir" "z = t2"
 Check-Pass "optimized ir" ".\compiler.exe tests\valid\optimize.mc --ir --opt" "x = 10"
 
+Check-Pass "x86 assembly output" ".\compiler.exe tests\valid\sum.mc -S" "_main:"
+Check-Pass "x86 immediate handling" ".\compiler.exe tests\valid\logic.mc -S" "cmpq \$0"
+Check-Pass "x86 sum compile and run" ".\compiler.exe tests\valid\sum.mc -S | Out-File -FilePath test.s -Encoding ASCII; gcc -o test.exe test.s; echo 5 | .\test.exe" "15"
+
 Check-Fail "lexical bad char" ".\compiler.exe tests\invalid_lex\bad_char.mc --tokens" "LexicalError"
 Check-Fail "lexical unclosed comment" ".\compiler.exe tests\invalid_lex\unclosed_comment.mc --tokens" "unclosed block comment"
 Check-Fail "lexical bad number" ".\compiler.exe tests\invalid_lex\bad_number.mc --tokens" "illegal number format"

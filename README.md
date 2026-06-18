@@ -1,8 +1,8 @@
 # Mini-C Compiler
 
-这是一个面向编译原理大作业的 Mini-C 教学编译器。项目目标不是把 C 语言完整复刻一遍，而是把一个小语言从源程序逐步处理到可运行结果：词法分析、语法分析、语义检查、中间代码、简单优化、VM 后端和解释执行。
+这是一个面向编译原理大作业的 Mini-C 教学编译器。项目目标不是把 C 语言完整复刻一遍，而是把一个小语言从源程序逐步处理到可运行结果：词法分析、语法分析、语义检查、中间代码、简单优化、x86-64 汇编生成和本地执行。
 
-当前分支是 `feature/ir`，主要完成中间代码生成和简单优化模块拆分。本分支已经包含前面完成的词法分析、语法分析和语义分析模块，并在语义检查通过后生成三地址形式的 IR。
+当前分支是 `end`，主要完成 x86-64 汇编代码生成器模块。本分支已经包含前面完成的词法分析、语法分析、语义分析和中间代码生成模块，并能将优化后的 IR 转换为可编译运行的 x86-64 汇编代码。
 
 ## 已支持功能
 
@@ -13,18 +13,18 @@
 - 展示输出：Token、AST、AST DOT、符号表、IR、优化后 IR、VM 指令、x86 风格汇编
 - 错误处理：词法错误、语法错误、语义错误，均带行号和列号
 
-## feature/ir 分支完成内容
+## end 分支完成内容
 
-本分支完成了中间代码模块化：
+本分支完成了 x86-64 汇编代码生成器模块：
 
-- 新增 `include/ir.hpp`，声明 `IRGenerator`、IR 工具函数、优化函数和打印接口。
-- 新增 `src/ir.cpp`，实现 AST 到三地址 IR 的生成。
-- 支持赋值、读入、输出、返回语句的 IR 生成。
-- 支持 `if/else`、`while`、`break`、`continue` 的标签和跳转生成。
-- 支持算术、关系、相等、逻辑和一元表达式的临时变量生成。
-- 支持常量折叠、简单常量传播和不可达代码消除。
-- `build.ps1`、`Makefile`、`scripts/run_all_tests.ps1` 已接入 `src/ir.cpp`。
-- 补充 IR 专项测试，覆盖表达式临时变量生成和优化后 IR 输出。
+- 新增 `include/x86.hpp`，声明 `X86Generator` 类接口。
+- 新增 `src/x86.cpp`，实现完整的 x86-64 汇编代码生成器。
+- 支持所有 IR 操作：算术运算(ADD/SUB/MUL/DIV)、逻辑运算(AND/OR/NOT)、比较运算(LT/GT/LE/GE/EQ/NE)、控制流(GOTO/IF_FALSE/LABEL)、IO操作(READ/WRITE)、RETURN。
+- 正确处理常量操作数，生成立即数指令(如 `cmpq $0, %rax`)。
+- 修复 scanf 读取 32 位整数后的符号扩展问题(使用 `movslq` 指令)。
+- 生成 GAS 兼容的 AT&T 语法汇编代码。
+- `build.ps1`、`Makefile`、`scripts/run_all_tests.ps1` 已接入 `src/x86.cpp`。
+- 修改 `-S` 选项，从伪汇编输出改为真正的 x86-64 汇编代码输出。
 
 当前测试结果：
 
@@ -157,11 +157,13 @@ include/lexer.hpp           词法分析模块接口
 include/parser.hpp          语法分析模块接口
 include/semantic.hpp        语义分析模块接口
 include/ir.hpp              中间代码模块接口
+include/x86.hpp             x86-64 汇编生成器接口
 src/main.cpp                当前主控流程和后端集成代码
 src/lexer.cpp               词法分析模块实现
 src/parser.cpp              语法分析模块实现
 src/semantic.cpp            语义分析模块实现
 src/ir.cpp                  中间代码生成与优化实现
+src/x86.cpp                 x86-64 汇编代码生成器实现
 tests/                      正例和反例
 scripts/run_all_tests.ps1   自动测试脚本
 ```
