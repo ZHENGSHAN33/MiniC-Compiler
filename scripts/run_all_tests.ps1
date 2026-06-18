@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-& g++ -std=c++17 -Wall -Wextra -O2 -Iinclude src/main.cpp src/lexer.cpp src/parser.cpp src/semantic.cpp -o compiler.exe
+& g++ -std=c++17 -Wall -Wextra -O2 -Iinclude src/main.cpp src/lexer.cpp src/parser.cpp src/semantic.cpp src/ir.cpp -o compiler.exe
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
@@ -40,6 +40,8 @@ Check-Pass "logic run" "echo 6 | .\compiler.exe tests\valid\logic.mc --run" "1"
 Check-Pass "token output" ".\compiler.exe tests\valid\factorial.mc --tokens" "KW_WHILE"
 Check-Pass "lexer keywords and comments" ".\compiler.exe tests\valid\lexer_keywords_comments.mc --tokens" "KW_BOOL"
 Check-Pass "parser precedence and nested statements" ".\compiler.exe tests\valid\parser_precedence_nested.mc --ast" "BinaryExpr \|\|"
+Check-Pass "ir arithmetic generation" ".\compiler.exe tests\valid\ir_arithmetic.mc --ir" "t2 = t1 \+ 4"
+Check-Pass "ir temporary generation" ".\compiler.exe tests\valid\ir_temporaries.mc --ir" "z = t2"
 Check-Pass "optimized ir" ".\compiler.exe tests\valid\optimize.mc --ir --opt" "x = 10"
 
 Check-Fail "lexical bad char" ".\compiler.exe tests\invalid_lex\bad_char.mc --tokens" "LexicalError"
