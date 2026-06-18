@@ -2,8 +2,8 @@ int main() {
     int x;
     int y;
     int z;
-    x=1;
-    y=2;
-    z=x+x*y;
+    x = 1;
+    y = 2;
+    z = x + x * y;
     return 0;
 }
