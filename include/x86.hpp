@@ -19,6 +19,12 @@ namespace minic
         int getVarOffset(const std::string &name);
         void allocateVars(const IRList &ir);
         bool isIntegerText(const std::string &s);
+        int alignedFrameSize() const;
+        std::string symbol(const std::string &name) const;
+        std::string firstArgReg() const;
+        std::string secondArgReg() const;
+        void loadValueToRax(const std::string &value);
+        void emitCompare(const Quad &q, const std::string &setInstr);
 
         std::vector<std::string> code_;
         std::map<std::string, int> varOffsets_;

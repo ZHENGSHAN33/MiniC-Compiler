@@ -1,11 +1,33 @@
 #include "x86.hpp"
-#include "ir.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <set>
 
 namespace minic
 {
+
+namespace
+{
+
+#if defined(_WIN32)
+    constexpr bool kWindowsAbi = true;
+#else
+    constexpr bool kWindowsAbi = false;
+#endif
+
+#if defined(__APPLE__)
+    constexpr bool kDarwinSymbols = true;
+#else
+    constexpr bool kDarwinSymbols = false;
+#endif
+
+    int alignTo16(int value)
+    {
+        return (value + 15) / 16 * 16;
+    }
+
+} // namespace
 
     void X86Generator::emit(const std::string &line)
     {
@@ -48,9 +70,76 @@ namespace minic
     {
         if (s.empty())
             return false;
-        if (s[0] == '-' || s[0] == '+')
-            return std::all_of(s.begin() + 1, s.end(), ::isdigit);
-        return std::all_of(s.begin(), s.end(), ::isdigit);
+        size_t i = (s[0] == '-' || s[0] == '+') ? 1 : 0;
+        if (i == s.size())
+            return false;
+        return std::all_of(s.begin() + static_cast<std::ptrdiff_t>(i), s.end(),
+                           [](unsigned char ch) { return std::isdigit(ch) != 0; });
+    }
+
+    int X86Generator::alignedFrameSize() const
+    {
+        int frame = stackSize_;
+        if (kWindowsAbi)
+            frame += 32;
+        return alignTo16(frame);
+    }
+
+    std::string X86Generator::symbol(const std::string &name) const
+    {
+        return kDarwinSymbols ? "_" + name : name;
+    }
+
+    std::string X86Generator::firstArgReg() const
+    {
+        return kWindowsAbi ? "%rcx" : "%rdi";
+    }
+
+    std::string X86Generator::secondArgReg() const
+    {
+        return kWindowsAbi ? "%rdx" : "%rsi";
+    }
+
+    void X86Generator::loadValueToRax(const std::string &value)
+    {
+        if (isIntegerText(value))
+            emit("  movq $" + value + ", %rax");
+        else
+            emit("  movq " + std::to_string(getVarOffset(value)) + "(%rbp), %rax");
+    }
+
+    void X86Generator::emitCompare(const Quad &q, const std::string &setInstr)
+    {
+        if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+        {
+            int left = std::stoi(q.arg1);
+            int right = std::stoi(q.arg2);
+            bool value = false;
+            if (setInstr == "setl")
+                value = left < right;
+            else if (setInstr == "setle")
+                value = left <= right;
+            else if (setInstr == "setg")
+                value = left > right;
+            else if (setInstr == "setge")
+                value = left >= right;
+            else if (setInstr == "sete")
+                value = left == right;
+            else if (setInstr == "setne")
+                value = left != right;
+            emit("  movq $" + std::string(value ? "1" : "0") + ", " +
+                 std::to_string(getVarOffset(q.result)) + "(%rbp)");
+            return;
+        }
+
+        loadValueToRax(q.arg1);
+        if (isIntegerText(q.arg2))
+            emit("  cmpq $" + q.arg2 + ", %rax");
+        else
+            emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+        emit("  " + setInstr + " %al");
+        emit("  movzbl %al, %eax");
+        emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
     }
 
     std::string X86Generator::generate(const IRList &ir)
@@ -61,16 +150,15 @@ namespace minic
         nextOffset_ = 0;
 
         allocateVars(ir);
+        int frameSize = alignedFrameSize();
 
         emit(".text");
-        emit(".global _main");
-        emit("_main:");
+        emit(".global " + symbol("main"));
+        emit(symbol("main") + ":");
         emit("  pushq %rbp");
         emit("  movq %rsp, %rbp");
-        if (stackSize_ > 0)
-        {
-            emit("  subq $" + std::to_string(stackSize_) + ", %rsp");
-        }
+        if (frameSize > 0)
+            emit("  subq $" + std::to_string(frameSize) + ", %rsp");
 
         for (const auto &q : ir)
         {
@@ -87,10 +175,8 @@ namespace minic
             case IROp::IF_FALSE:
                 if (isIntegerText(q.arg1))
                 {
-                    if (q.arg1 == "0")
-                    {
+                    if (std::stoi(q.arg1) == 0)
                         emit("  jmp " + q.result);
-                    }
                 }
                 else
                 {
@@ -101,22 +187,15 @@ namespace minic
                 break;
 
             case IROp::ASSIGN:
-                if (isIntegerText(q.arg1))
-                {
-                    emit("  movq $" + q.arg1 + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
+                loadValueToRax(q.arg1);
+                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
             case IROp::READ:
-                emit("  leaq .LC1(%rip), %rdi");
-                emit("  leaq " + std::to_string(getVarOffset(q.result)) + "(%rbp), %rsi");
+                emit("  leaq .LC1(%rip), " + firstArgReg());
+                emit("  leaq " + std::to_string(getVarOffset(q.result)) + "(%rbp), " + secondArgReg());
                 emit("  movq $0, %rax");
-                emit("  callq _scanf");
+                emit("  callq " + symbol("scanf"));
                 emit("  movl " + std::to_string(getVarOffset(q.result)) + "(%rbp), %eax");
                 emit("  movslq %eax, %rax");
                 emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
@@ -124,78 +203,53 @@ namespace minic
 
             case IROp::WRITE:
                 if (isIntegerText(q.arg1))
-                {
-                    emit("  movq $" + q.arg1 + ", %rdi");
-                }
+                    emit("  movq $" + q.arg1 + ", " + firstArgReg());
                 else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rdi");
-                }
-                emit("  callq _print_int");
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), " + firstArgReg());
+                emit("  callq " + symbol("print_int"));
                 break;
 
             case IROp::RETURN:
-                if (isIntegerText(q.arg1))
-                {
-                    emit("  movq $" + q.arg1 + ", %rax");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                }
+                loadValueToRax(q.arg1);
                 emit("  movq %rbp, %rsp");
                 emit("  popq %rbp");
                 emit("  retq");
                 break;
 
             case IROp::ADD:
+                loadValueToRax(q.arg1);
                 if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
                     emit("  addq $" + q.arg2 + ", %rax");
-                }
                 else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
                     emit("  addq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                }
                 emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
             case IROp::SUB:
+                loadValueToRax(q.arg1);
                 if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
                     emit("  subq $" + q.arg2 + ", %rax");
-                }
                 else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
                     emit("  subq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                }
                 emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
             case IROp::MUL:
+                loadValueToRax(q.arg1);
                 if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
                     emit("  imulq $" + q.arg2 + ", %rax");
-                }
                 else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
                     emit("  imulq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                }
                 emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
             case IROp::DIV:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                loadValueToRax(q.arg1);
                 emit("  cqto");
                 if (isIntegerText(q.arg2))
                 {
-                    emit("  idivq $" + q.arg2);
+                    emit("  movq $" + q.arg2 + ", %r10");
+                    emit("  idivq %r10");
                 }
                 else
                 {
@@ -204,218 +258,92 @@ namespace minic
                 emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
+            case IROp::MOD:
+                loadValueToRax(q.arg1);
+                emit("  cqto");
+                if (isIntegerText(q.arg2))
+                {
+                    emit("  movq $" + q.arg2 + ", %r10");
+                    emit("  idivq %r10");
+                }
+                else
+                {
+                    emit("  idivq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp)");
+                }
+                emit("  movq %rdx, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                break;
+
             case IROp::LT:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
-                {
-                    std::string val = std::stoi(q.arg1) < std::stoi(q.arg2) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq $" + q.arg2 + ", %rax");
-                    emit("  setl %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  setl %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
+                emitCompare(q, "setl");
                 break;
-
-            case IROp::GT:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
-                {
-                    std::string val = std::stoi(q.arg1) > std::stoi(q.arg2) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq $" + q.arg2 + ", %rax");
-                    emit("  setg %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  setg %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                break;
-
             case IROp::LE:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
-                {
-                    std::string val = std::stoi(q.arg1) <= std::stoi(q.arg2) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq $" + q.arg2 + ", %rax");
-                    emit("  setle %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  setle %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
+                emitCompare(q, "setle");
                 break;
-
+            case IROp::GT:
+                emitCompare(q, "setg");
+                break;
             case IROp::GE:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
-                {
-                    std::string val = std::stoi(q.arg1) >= std::stoi(q.arg2) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq $" + q.arg2 + ", %rax");
-                    emit("  setge %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  setge %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
+                emitCompare(q, "setge");
                 break;
-
             case IROp::EQ:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
-                {
-                    std::string val = std::stoi(q.arg1) == std::stoi(q.arg2) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq $" + q.arg2 + ", %rax");
-                    emit("  sete %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  sete %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
+                emitCompare(q, "sete");
                 break;
-
             case IROp::NE:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
-                {
-                    std::string val = std::stoi(q.arg1) != std::stoi(q.arg2) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq $" + q.arg2 + ", %rax");
-                    emit("  setne %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  setne %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
+                emitCompare(q, "setne");
                 break;
 
             case IROp::AND:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                loadValueToRax(q.arg1);
+                emit("  testq %rax, %rax");
+                emit("  setne %al");
+                emit("  movzbl %al, %eax");
+                if (isIntegerText(q.arg2))
                 {
-                    std::string val = (std::stoi(q.arg1) != 0 && std::stoi(q.arg2) != 0) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    int val = std::stoi(q.arg2);
-                    if (val == 0)
-                    {
-                        emit("  movq $0, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                    }
-                    else
-                    {
-                        emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                        emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                    }
+                    emit(std::stoi(q.arg2) == 0 ? "  andq $0, %rax" : "  andq $1, %rax");
                 }
                 else
                 {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  andq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                    emit("  movq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %r10");
+                    emit("  testq %r10, %r10");
+                    emit("  setne %r10b");
+                    emit("  movzbl %r10b, %r10d");
+                    emit("  andq %r10, %rax");
                 }
+                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
             case IROp::OR:
-                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                loadValueToRax(q.arg1);
+                emit("  testq %rax, %rax");
+                emit("  setne %al");
+                emit("  movzbl %al, %eax");
+                if (isIntegerText(q.arg2))
                 {
-                    std::string val = (std::stoi(q.arg1) != 0 || std::stoi(q.arg2) != 0) ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else if (isIntegerText(q.arg2))
-                {
-                    int val = std::stoi(q.arg2);
-                    if (val != 0)
-                    {
-                        emit("  movq $1, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                    }
-                    else
-                    {
-                        emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                        emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                    }
+                    emit(std::stoi(q.arg2) == 0 ? "  orq $0, %rax" : "  orq $1, %rax");
                 }
                 else
                 {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  orq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                    emit("  movq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %r10");
+                    emit("  testq %r10, %r10");
+                    emit("  setne %r10b");
+                    emit("  movzbl %r10b, %r10d");
+                    emit("  orq %r10, %rax");
                 }
+                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
             case IROp::NOT:
-                if (isIntegerText(q.arg1))
-                {
-                    std::string val = std::stoi(q.arg1) == 0 ? "1" : "0";
-                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
-                else
-                {
-                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                    emit("  testq %rax, %rax");
-                    emit("  sete %al");
-                    emit("  movzbl %al, %eax");
-                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
-                }
+                loadValueToRax(q.arg1);
+                emit("  testq %rax, %rax");
+                emit("  sete %al");
+                emit("  movzbl %al, %eax");
+                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                break;
+
+            case IROp::NEG:
+                loadValueToRax(q.arg1);
+                emit("  negq %rax");
+                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
                 break;
 
             default:
@@ -424,27 +352,33 @@ namespace minic
         }
 
         emit(".data");
-        emit("_print_buf: .space 32");
-        emit("_read_buf: .space 16");
         emit(".LC0: .string \"%d\\n\"");
         emit(".LC1: .string \"%d\"");
 
         emit(".text");
-        emit("_print_int:");
+        emit(symbol("print_int") + ":");
         emit("  pushq %rbp");
         emit("  movq %rsp, %rbp");
-        emit("  movq %rdi, %rsi");
-        emit("  leaq .LC0(%rip), %rdi");
+        if (kWindowsAbi)
+        {
+            emit("  subq $32, %rsp");
+            emit("  movq %rcx, %rdx");
+            emit("  leaq .LC0(%rip), %rcx");
+        }
+        else
+        {
+            emit("  movq %rdi, %rsi");
+            emit("  leaq .LC0(%rip), %rdi");
+        }
         emit("  movq $0, %rax");
-        emit("  callq _printf");
+        emit("  callq " + symbol("printf"));
+        emit("  movq %rbp, %rsp");
         emit("  popq %rbp");
         emit("  retq");
 
         std::string result;
         for (const auto &line : code_)
-        {
             result += line + "\n";
-        }
         return result;
     }
 
