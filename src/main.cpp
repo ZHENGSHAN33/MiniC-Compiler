@@ -4,6 +4,7 @@
 #include "parser.hpp"
 #include "semantic.hpp"
 #include "ir.hpp"
+#include "x86.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -369,7 +370,8 @@ int main(int argc, char **argv)
         }
         else if (options.count("-S"))
         {
-            std::cout << generatePseudoX86(p.optIr);
+            X86Generator x86gen;
+            std::cout << x86gen.generate(p.optIr);
         }
         else
         {
