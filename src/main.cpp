@@ -4,6 +4,7 @@
 #include "parser.hpp"
 #include "semantic.hpp"
 #include "ir.hpp"
+#include "x86.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -227,32 +228,6 @@ namespace
         return 0;
     }
 
-    std::string generatePseudoX86(const IRList &ir)
-    {
-        std::ostringstream out;
-        out << "; Mini-C pseudo x86-64 output for presentation\n";
-        for (const auto &q : ir)
-        {
-            if (q.op == IROp::LABEL)
-                out << q.result << ":\n";
-            else if (q.op == IROp::GOTO)
-                out << "  jmp " << q.result << "\n";
-            else if (q.op == IROp::IF_FALSE)
-                out << "  cmp [" << q.arg1 << "], 0\n  je " << q.result << "\n";
-            else if (q.op == IROp::ASSIGN)
-                out << "  mov [" << q.result << "], " << q.arg1 << "\n";
-            else if (q.op == IROp::READ)
-                out << "  call read_int ; -> " << q.result << "\n";
-            else if (q.op == IROp::WRITE)
-                out << "  call print_int ; " << q.arg1 << "\n";
-            else if (q.op == IROp::RETURN)
-                out << "  mov rax, " << q.arg1 << "\n  ret\n";
-            else
-                out << "  ; " << q.result << " = " << q.arg1 << " " << irOpName(q.op) << " " << q.arg2 << "\n";
-        }
-        return out.str();
-    }
-
     struct Pipeline
     {
         TokenList tokens;
@@ -369,7 +344,8 @@ int main(int argc, char **argv)
         }
         else if (options.count("-S"))
         {
-            std::cout << generatePseudoX86(p.optIr);
+            X86Generator x86gen;
+            std::cout << x86gen.generate(p.optIr);
         }
         else
         {
