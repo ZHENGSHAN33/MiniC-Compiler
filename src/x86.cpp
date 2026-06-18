@@ -85,9 +85,19 @@ namespace minic
                 break;
 
             case IROp::IF_FALSE:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  testq %rax, %rax");
-                emit("  jz " + q.result);
+                if (isIntegerText(q.arg1))
+                {
+                    if (q.arg1 == "0")
+                    {
+                        emit("  jmp " + q.result);
+                    }
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  testq %rax, %rax");
+                    emit("  jz " + q.result);
+                }
                 break;
 
             case IROp::ASSIGN:
@@ -195,69 +205,217 @@ namespace minic
                 break;
 
             case IROp::LT:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  setl %al");
-                emit("  movzbl %al, %eax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = std::stoi(q.arg1) < std::stoi(q.arg2) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq $" + q.arg2 + ", %rax");
+                    emit("  setl %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  setl %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::GT:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  setg %al");
-                emit("  movzbl %al, %eax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = std::stoi(q.arg1) > std::stoi(q.arg2) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq $" + q.arg2 + ", %rax");
+                    emit("  setg %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  setg %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::LE:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  setle %al");
-                emit("  movzbl %al, %eax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = std::stoi(q.arg1) <= std::stoi(q.arg2) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq $" + q.arg2 + ", %rax");
+                    emit("  setle %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  setle %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::GE:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  setge %al");
-                emit("  movzbl %al, %eax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = std::stoi(q.arg1) >= std::stoi(q.arg2) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq $" + q.arg2 + ", %rax");
+                    emit("  setge %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  setge %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::EQ:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  sete %al");
-                emit("  movzbl %al, %eax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = std::stoi(q.arg1) == std::stoi(q.arg2) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq $" + q.arg2 + ", %rax");
+                    emit("  sete %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  sete %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::NE:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  setne %al");
-                emit("  movzbl %al, %eax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = std::stoi(q.arg1) != std::stoi(q.arg2) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq $" + q.arg2 + ", %rax");
+                    emit("  setne %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  cmpq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  setne %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::AND:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  andq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = (std::stoi(q.arg1) != 0 && std::stoi(q.arg2) != 0) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    int val = std::stoi(q.arg2);
+                    if (val == 0)
+                    {
+                        emit("  movq $0, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                    }
+                    else
+                    {
+                        emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                        emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                    }
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  andq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::OR:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  orq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1) && isIntegerText(q.arg2))
+                {
+                    std::string val = (std::stoi(q.arg1) != 0 || std::stoi(q.arg2) != 0) ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else if (isIntegerText(q.arg2))
+                {
+                    int val = std::stoi(q.arg2);
+                    if (val != 0)
+                    {
+                        emit("  movq $1, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                    }
+                    else
+                    {
+                        emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                        emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                    }
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  orq " + std::to_string(getVarOffset(q.arg2)) + "(%rbp), %rax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             case IROp::NOT:
-                emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
-                emit("  notq %rax");
-                emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                if (isIntegerText(q.arg1))
+                {
+                    std::string val = std::stoi(q.arg1) == 0 ? "1" : "0";
+                    emit("  movq $" + val + ", " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
+                else
+                {
+                    emit("  movq " + std::to_string(getVarOffset(q.arg1)) + "(%rbp), %rax");
+                    emit("  testq %rax, %rax");
+                    emit("  sete %al");
+                    emit("  movzbl %al, %eax");
+                    emit("  movq %rax, " + std::to_string(getVarOffset(q.result)) + "(%rbp)");
+                }
                 break;
 
             default:
